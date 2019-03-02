@@ -167,7 +167,7 @@ class LogReg():
         roc_x = []
         roc_y = []
         
-        # Compute 100 different threshold
+        # Compute different thresholds
         for threshold in np.flip(np.arange(0, 1.1, 1/tests), axis=0):
             self.apply_threshold(threshold)
             self.compute_kpis()
@@ -181,11 +181,18 @@ class LogReg():
         # Plot the results
         fig, ax = plt.subplots(figsize=(10,6))
         plt.plot(roc_x, roc_y)
+
+        # Plot the bisectrix
+        plt.plot([0, 1], [0, 1], linestyle='dashed', alpha=0.5)
+
+        # Set the axe limits
+        plt.axis((-0.005, 1, 0, 1.005))
+
         MyPlot.bg(ax)
         MyPlot.border(ax)
         MyPlot.title(ax, 'The ROC Curve')
         MyPlot.labels(ax, "1 - Specificity", "Sensibility")
-        plt.show()
+        #plt.show()
         
     def plot(self):
         """ Plot the scatter plot and the probability by class. """
@@ -237,23 +244,14 @@ class LogReg():
                 'name': f"B{i+1}",
                 'Coeff': x,
                 'OR': np.exp(x),
-                'P-Value': {self.model.pvalues[i]}
+                'P-Value': self.model.pvalues[i]
                 })
 
         dfinfos = pd.DataFrame(ainfos)
-        dfinfos.set_index(dfinfos['name'])
-        dfinfos.index.name(None, inplace=True)
+        dfinfos.set_index(dfinfos['name'], inplace=True)
+        dfinfos.index.rename(None, inplace=True)
         dfinfos.drop("name", axis=1, inplace=True)
         display(dfinfos)
-
-        for i, x in enumerate(self.model.params):
-            print(f"B{i+1}:")
-            print(f"Coeff: {x}")
-            print(f"OR: {np.exp(x)}")
-            print(f"P-Value: {self.model.pvalues[i]}")
-            print("") 
-
-
 
         data = {
             'y = 1':[self.true_pos, self.false_neg, self.pos_data],
@@ -263,6 +261,7 @@ class LogReg():
 
         df = pd.DataFrame(data=data, columns=['y = 1', 'y = 0', 'Total'], index=['Predict 1', 'Predict 0', 'Total'])
 
+        print("Matrice de confusion:")
         display(df)
         print("")
         print(f"Success rate: {self.success_rate:.2%}")
