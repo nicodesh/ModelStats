@@ -70,9 +70,9 @@ class LinReg():
 ##################################################################
 
 class LogReg():
-    """ A class to easily plot and compute simple logistic regressions. """
+    """ A class to easily plot and compute simple and multiple logistic regressions. """
     
-    def __init__(self, data, the_class=False, threshold=0.5):
+    def __init__(self, data, the_class=False, threshold=0.5, model=False, predict=False):
         """ The constructor of the class
         Args:
             data (Pandas dataframe): The first columns should be the independant variables.
@@ -82,39 +82,72 @@ class LogReg():
         self.data = data.copy()
         self.the_class = the_class
         self.threshold = threshold
+        self.predict = predict
+
+        if (predict == False):
+            self.X = self.data.iloc[:,:-1].values
+            self.y = self.data.iloc[:,-1]
+
+        else:
+            self.X = self.data.values
+
+        self.X = sm.add_constant(self.X)
         
         # Compute the logistic regression
-        self.compute_log_reg()
+        if (model == False):
+            self.compute_log_reg()
+
+        else:
+            self.model = model
         
         # Apply the model on the dataset
         self.set_probabilites()
         
         # Apply the threshold decision
-        self.apply_threshold(self.threshold)
+        self.apply_threshold()
             
         # Compute the KPIs
-        self.compute_kpis()
+        if (predict == False):
+            self.compute_kpis()
     
         # Compute the class dataframe if it's a simple logistical regression
         self.compute_class_df()
             
     def compute_log_reg(self):
-        """ Compute the logistical regression. """
-        
-        self.X = self.data.iloc[:,:-1].values
-        self.X = sm.add_constant(self.X)
-        self.y = self.data.iloc[:,-1]
+        """ Compute testhe logistical regression. """
+
         self.model = sm.Logit(self.y, self.X).fit(disp=False)      
             
     def set_probabilites(self):
         """ Apply the model. """
         
         self.probabilities = pd.DataFrame(self.X).apply(self.logistic_f, axis=1)
+
+    def logistic_f(self, data):
+        """ Logistic regression function. """
         
-    def apply_threshold(self, threshold):
+        logit = 0
+        for i, x in enumerate(self.model.params):
+            logit += data[i] * x
+        
+        num = np.exp(logit)
+        den = 1 + np.exp(logit)
+        
+        return num / den
+        
+    def apply_threshold(self):
         """ Apply the specified threshold on data. """
+
+        self.data['model'] = self.probabilities.apply(self.threshold_decision)
+
+    def threshold_decision(self, x):
+        """ Return 1 or 0, depending on the threshold fixed before. """
         
-        self.data['model'] = self.probabilities.apply(self.threshold_decision, args=(threshold,))
+        if (x >= self.threshold):
+            return 1
+        
+        else:
+            return 0
         
     def compute_kpis(self):
         """ Compute the KPI attached to the model. """
@@ -140,7 +173,7 @@ class LogReg():
     def compute_class_df(self):
         """ Compute the probability by class and create a dataframe. """
  
-        if ((self.the_class) and (isinstance(self.the_class, int))):
+        if ((self.the_class) and (isinstance(self.the_class, (int,float)))):
 
             # Create the bins from the classes
             self.data['the_class'] = LogReg.create_the_class(self, self.data.iloc[:,0])
@@ -168,14 +201,18 @@ class LogReg():
         roc_y = []
         
         # Compute different thresholds
+        original_threshold = self.threshold
+
         for threshold in np.flip(np.arange(0, 1.1, 1/tests), axis=0):
-            self.apply_threshold(threshold)
+            self.threshold = threshold
+            self.apply_threshold()
             self.compute_kpis()
             roc_x.append(self.sp_inv)
             roc_y.append(self.se)
             
         # Reset on the default values
-        self.apply_threshold(self.threshold)
+        self.threshold = original_threshold
+        self.apply_threshold()
         self.compute_kpis()
         
         # Plot the results
@@ -253,20 +290,22 @@ class LogReg():
         dfinfos.drop("name", axis=1, inplace=True)
         display(dfinfos)
 
-        data = {
-            'y = 1':[self.true_pos, self.false_neg, self.pos_data],
-            'y = 0':[self.false_pos, self.true_neg, self.neg_data],
-            'Total':[self.pos_predict, self.neg_predict, self.total]
-        }
+        if (self.predict == False):
 
-        df = pd.DataFrame(data=data, columns=['y = 1', 'y = 0', 'Total'], index=['Predict 1', 'Predict 0', 'Total'])
+            data = {
+                'y = 1':[self.true_pos, self.false_neg, self.pos_data],
+                'y = 0':[self.false_pos, self.true_neg, self.neg_data],
+                'Total':[self.pos_predict, self.neg_predict, self.total]
+            }
 
-        print("Matrice de confusion:")
-        display(df)
-        print("")
-        print(f"Success rate: {self.success_rate:.2%}")
-        print(f"Sensibility: {self.se:.2%}")
-        print(f"Specificity: {self.sp:.2%}")
+            df = pd.DataFrame(data=data, columns=['y = 1', 'y = 0', 'Total'], index=['Predict 1', 'Predict 0', 'Total'])
+
+            print("Matrice de confusion:")
+            display(df)
+            print("")
+            print(f"Success rate: {self.success_rate:.2%}")
+            print(f"Sensibility: {self.se:.2%}")
+            print(f"Specificity: {self.sp:.2%}")
         
     def create_the_class(self, x, labels='num'):
         """ Create bins, based on the class specified by the user. """
@@ -279,28 +318,6 @@ class LogReg():
         
         elif (labels == 'num'):
             return (the_ceil + the_floor) / 2
-        
-    def logistic_f(self, data):
-        """ Logistic regression function. """
-        
-        logit = 0
-        for i, x in enumerate(self.model.params):
-            logit += data[i] * x
-        
-        num = np.exp(logit)
-        den = 1 + np.exp(logit)
-        
-        return num / den
-    
-    def threshold_decision(self, x, threshold):
-        """ Return 1 or 0, depending on the threshold fixed before. """
-        
-        if (x >= threshold):
-            return 1
-        
-        else:
-            return 0
-
 
 class OWAnova():
     """ Copute ANOVA model. """
